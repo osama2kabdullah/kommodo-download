@@ -1,0 +1,8 @@
+body { font-family: system-ui, -apple-system, Roboto, Arial; max-width: 900px; margin: 24px auto; padding: 0 16px; }
+input[type=text] { width: 100%; padding: 8px; margin: 8px 0; }
+button, .download-btn { padding: 8px 12px; border-radius: 6px; text-decoration: none; background: #28a745; color: #fff; }
+button:hover, .download-btn:hover { opacity: 0.9; }
+.notice { background: #fffbdd; padding: 8px; border-radius: 6px; margin: 6px 0; }
+.card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 16px; }
+.video { max-width: 100%; height: auto; border-radius: 6px; }
+.thumb { max-width: 320px; border-radius: 6px; }
