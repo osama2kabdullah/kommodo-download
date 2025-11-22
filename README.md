@@ -15,11 +15,10 @@ kommodo-download/
 │   │   └── index.html
 │   │
 │   ├── __init__.py
-│   ├── api.py
 │   └── routes.py
 │
 ├── .gitignore
-├── app.py
+├── README.md
 ├── requirements.txt
 ├── run.py
 ├── vercel.json
