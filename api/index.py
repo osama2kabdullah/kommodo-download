@@ -1,4 +1,11 @@
-from kommodo import create_app
+from flask import Flask
 
-app = create_app()
-handler = app
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return 'Hello, World!'
+
+@app.route('/about')
+def about():
+    return 'About'
