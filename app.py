@@ -2,7 +2,7 @@ import os
 import tempfile
 import shutil
 import urllib.parse
-from flask import Flask, request, render_template, redirect, url_for, Response, stream_with_context, abort
+from flask import Flask, request, render_template, redirect, url_for, Response, stream_with_context, abort, jsonify
 import yt_dlp
 import requests
 
@@ -86,6 +86,52 @@ def fetch_info():
         stream_path=stream_path,
         download_route=download_route
     )
+
+@app.route('/fetch_info_ajax', methods=['POST'])
+def fetch_info_ajax():
+    url = request.form.get('url', '').strip()
+    if not url: return jsonify({"error": "No URL provided"}), 400
+
+    ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    title = info.get('title', 'Unknown Video')
+    thumbnail = info.get('thumbnail')
+
+    # Select best playable format
+    stream_url = None
+    formats = info.get('formats')
+    if formats:
+        real_media = []
+        for f in formats:
+            url_f = f.get("url")
+            ext = f.get("ext")
+            if ext in ("json", "mpd", "m3u8") or not url_f: continue
+            score = 0
+            if f.get('acodec') != 'none': score += 50
+            if f.get('vcodec') != 'none': score += 50
+            if f.get('height'): score += f.get('height')
+            if ext in ("mp4", "webm"): score += 100
+            real_media.append((score, url_f))
+        if real_media:
+            real_media.sort(reverse=True)
+            stream_url = real_media[0][1]
+
+    if not stream_url and info.get('url'): stream_url = info.get('url')
+    if not stream_url: return jsonify({"error": "No playable video found"}), 400
+
+    encoded = urllib.parse.quote_plus(stream_url)
+    return jsonify({
+        "title": title,
+        "thumbnail": thumbnail,
+        "stream_path": url_for('proxy_stream', video_url=encoded),
+        "download_route": url_for('proxy_download', video_url=encoded)
+    })
 
 
 def stream_generator(remote_url):

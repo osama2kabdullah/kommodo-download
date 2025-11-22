@@ -1,99 +1,12 @@
-"""
-Flask app: Kommodo / generic video downloader (single-file)
-
-How it works
-- Uses yt-dlp to extract a direct video URL (works for many sites)
-- Shows a preview page with an HTML5 <video> tag and a Download button
-- The Download button proxies the video through this Flask app so your browser can download it.
-
-Requirements
-- Python 3.8+
-- pip install flask yt-dlp requests
-
-Run:
-python flask_kommodo_downloader.py
-Then open http://127.0.0.1:5000
-"""
-
-from flask import Flask, request, render_template_string, redirect, url_for, Response, stream_with_context, abort
-import yt_dlp
-import requests
-import urllib.parse
-import mimetypes
 import os
 import tempfile
 import shutil
-import time
+import urllib.parse
+from flask import Flask, request, render_template, redirect, url_for, Response, stream_with_context, abort, jsonify
+import yt_dlp
+import requests
 
 app = Flask(__name__)
-
-INDEX_HTML = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Video Downloader (Kommodo-friendly)</title>
-    <style>
-      body{font-family: system-ui, -apple-system, Roboto, Arial;max-width:900px;margin:40px auto;padding:0 16px}
-      input[type=text]{width:100%;padding:8px;margin:8px 0}
-      button{padding:8px 12px;border-radius:8px}
-      .notice{background:#fffbdd;padding:8px;border-radius:8px;margin-bottom:12px}
-      video{max-width:100%;height:auto;border:1px solid #ddd;border-radius:8px}
-    </style>
-  </head>
-  <body>
-    <h1>Download a video by URL</h1>
-    <p class="notice">Paste your Kommodo share link (or any video page) and click Fetch.</p>
-
-    <form method="post" action="/fetch_info">
-      <label for="url">Paste a video page or share URL:</label>
-      <input id="url" name="url" type="text" placeholder="https://..." required>
-      <div style="margin-top:8px"><button type="submit">Fetch video info</button></div>
-    </form>
-
-    <hr>
-    <p>Only download videos you own or have permission to access.</p>
-  </body>
-</html>
-"""
-
-RESULT_HTML = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Video preview</title>
-    <style>
-      body{font-family:system-ui,Arial;max-width:900px;margin:24px auto;padding:0 16px}
-      video{max-width:100%;height:auto;border-radius:8px}
-    </style>
-  </head>
-  <body>
-    <h1>Preview & Download</h1>
-    <p><strong>Title:</strong> {{title}}</p>
-    {% if thumbnail %}
-      <p><img src="{{thumbnail}}" alt="thumb" style="max-width:320px;border-radius:6px"></p>
-    {% endif %}
-
-    {% if stream_path %}
-      <video controls src="{{stream_path}}"></video>
-      <p style="margin-top:8px">
-        <a href="{{download_route}}" style="font-size:18px;">Download</a>
-      </p>
-    {% else %}
-      <p>No playable format found.</p>
-    {% endif %}
-
-    <p style="margin-top:18px"><a href="/">Back</a></p>
-  </body>
-</html>
-"""
-
-
-@app.route('/')
-def index():
-    return render_template_string(INDEX_HTML)
-
 
 @app.route('/fetch_info', methods=['POST'])
 def fetch_info():
@@ -117,7 +30,6 @@ def fetch_info():
     thumbnail = info.get('thumbnail')
 
     # Select best playable format
-    # Select best direct media file (avoid manifests)
     stream_url = None
     formats = info.get('formats')
 
@@ -127,11 +39,8 @@ def fetch_info():
         for f in formats:
             url_f = f.get("url")
             ext = f.get("ext")
-
-            # Skip manifest files (.json, .mpd, .m3u8)
-            if ext in ("json", "mpd", "m3u8"):
+            if ext in ("json", "mpd", "m3u8"):  # skip manifests
                 continue
-
             if not url_f:
                 continue
 
@@ -142,8 +51,6 @@ def fetch_info():
                 score += 50
             if f.get('height'):
                 score += f.get('height')
-
-            # Prefer actual video formats
             if ext in ("mp4", "webm"):
                 score += 100
 
@@ -153,24 +60,69 @@ def fetch_info():
             real_media.sort(reverse=True)
             stream_url = real_media[0][1]
 
-    if not stream_url:
-        if info.get('url'):
-            stream_url = info.get('url')
+    if not stream_url and info.get('url'):
+        stream_url = info.get('url')
 
     if not stream_url:
-        return "No direct playable video stream found.", 400
+        return "No playable video found", 400
 
     encoded = urllib.parse.quote_plus(stream_url)
     stream_path = url_for('proxy_stream', video_url=encoded)
     download_route = url_for('proxy_download', video_url=encoded)
 
-    return render_template_string(
-        RESULT_HTML,
+    return render_template(
+        'result.html',
         title=title,
         thumbnail=thumbnail,
         stream_path=stream_path,
-        download_route=download_route,
+        download_route=download_route
     )
+
+@app.route('/fetch_info_ajax', methods=['POST'])
+def fetch_info_ajax():
+    url = request.form.get('url', '').strip()
+    if not url: return jsonify({"error": "No URL provided"}), 400
+
+    ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    title = info.get('title', 'Unknown Video')
+    thumbnail = info.get('thumbnail')
+
+    # Select best playable format
+    stream_url = None
+    formats = info.get('formats')
+    if formats:
+        real_media = []
+        for f in formats:
+            url_f = f.get("url")
+            ext = f.get("ext")
+            if ext in ("json", "mpd", "m3u8") or not url_f: continue
+            score = 0
+            if f.get('acodec') != 'none': score += 50
+            if f.get('vcodec') != 'none': score += 50
+            if f.get('height'): score += f.get('height')
+            if ext in ("mp4", "webm"): score += 100
+            real_media.append((score, url_f))
+        if real_media:
+            real_media.sort(reverse=True)
+            stream_url = real_media[0][1]
+
+    if not stream_url and info.get('url'): stream_url = info.get('url')
+    if not stream_url: return jsonify({"error": "No playable video found"}), 400
+
+    encoded = urllib.parse.quote_plus(stream_url)
+    return jsonify({
+        "title": title,
+        "thumbnail": thumbnail,
+        "stream_path": url_for('proxy_stream', video_url=encoded),
+        "download_route": url_for('proxy_download', video_url=encoded)
+    })
 
 
 def stream_generator(remote_url):
@@ -185,18 +137,16 @@ def stream_generator(remote_url):
 
 
 @app.route('/stream')
-@app.route('/stream')
 def proxy_stream():
     video_url = request.args.get('video_url')
     if not video_url:
         abort(400)
 
     remote = urllib.parse.unquote_plus(video_url)
-
-    # Quick check for manifest-like URLs
     lower = remote.lower()
-    if any(x in lower for x in ('.m3u8', '.mpd', '.json')) or 'application/vnd.apple.mpegurl' in (requests.head(remote, allow_redirects=True, timeout=5).headers.get('content-type','').lower() if True else ''):
-        # Use yt-dlp to download+merge to a temp file, then stream the temp file
+
+    # If manifest, use yt-dlp to merge
+    if any(x in lower for x in ('.m3u8', '.mpd', '.json')):
         tmpdir = tempfile.mkdtemp(prefix="kommodo_")
         try:
             ydl_opts = {
@@ -207,13 +157,11 @@ def proxy_stream():
                 'no_warnings': True,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # extract & download - this will produce a single output file (mp4) when possible
-                info = ydl.extract_info(remote, download=True)
+                ydl.extract_info(remote, download=True)
 
-            # locate the downloaded file (choose largest file if multiple)
             files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir)]
             if not files:
-                return "Failed to download/convert manifest to media.", 500
+                return "Failed to merge video.", 500
             files.sort(key=lambda p: os.path.getsize(p), reverse=True)
             file_path = files[0]
 
@@ -227,25 +175,18 @@ def proxy_stream():
                             yield chunk
                 finally:
                     try:
-                        os.remove(path)
-                    except:
-                        pass
-                    try:
                         shutil.rmtree(tmpdir)
                     except:
                         pass
 
-            # stream as video/mp4 so browser can play inline
             return Response(stream_with_context(generate_and_cleanup(file_path, tmpdir)), mimetype='video/mp4')
         except Exception as e:
-            # cleanup on error
             try:
                 shutil.rmtree(tmpdir)
             except:
                 pass
-            return f"Error converting/streaming manifest: {e}", 500
+            return f"Error streaming merged video: {e}", 500
     else:
-        # direct streaming for regular file urls
         try:
             head = requests.head(remote, timeout=5, allow_redirects=True)
             ctype = head.headers.get('content-type', 'video/mp4')
@@ -254,7 +195,7 @@ def proxy_stream():
 
         return Response(stream_with_context(stream_generator(remote)), mimetype=ctype)
 
-@app.route('/download')
+
 @app.route('/download')
 def proxy_download():
     video_url = request.args.get('video_url')
@@ -264,13 +205,12 @@ def proxy_download():
     remote = urllib.parse.unquote_plus(video_url)
     lower = remote.lower()
 
-    # If remote looks like a manifest, use yt-dlp to produce a single MP4 and serve it
     if any(x in lower for x in ('.m3u8', '.mpd', '.json')):
         tmpdir = tempfile.mkdtemp(prefix="kommodo_dl_")
         try:
             ydl_opts = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': os.path.join(tmpdir, '%(id)s.%(ext)s'),
+                'outtmpl': os.path.join(tmpdir, '%(title)s.%(ext)s'),
                 'merge_output_format': 'mp4',
                 'quiet': True,
                 'no_warnings': True,
@@ -278,10 +218,9 @@ def proxy_download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(remote, download=True)
 
-            # locate the produced file
             files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir)]
             if not files:
-                return "Failed to download/convert manifest to media.", 500
+                return "Failed to download merged video.", 500
             files.sort(key=lambda p: os.path.getsize(p), reverse=True)
             file_path = files[0]
             filename = os.path.basename(file_path)
@@ -296,16 +235,12 @@ def proxy_download():
                             yield chunk
                 finally:
                     try:
-                        os.remove(path)
-                    except:
-                        pass
-                    try:
                         shutil.rmtree(tmpdir)
                     except:
                         pass
 
             response = Response(stream_with_context(generate_and_cleanup(file_path, tmpdir)), mimetype='application/octet-stream')
-            response.headers.set('Content-Disposition', f'attachment; filename=\"{filename}\"')
+            response.headers.set('Content-Disposition', f'attachment; filename="{filename}"')
             return response
 
         except Exception as e:
@@ -313,22 +248,31 @@ def proxy_download():
                 shutil.rmtree(tmpdir)
             except:
                 pass
-            return f"Error downloading/merging manifest: {e}", 500
+            return f"Error downloading merged video: {e}", 500
 
-    # Otherwise treat as direct file and proxy it
-    filename = remote.split("/")[-1].split("?")[0] or "video"
+    # direct file
+    filename = remote.split("/")[-1].split("?")[0] or "video.mp4"
     try:
         r = requests.get(remote, stream=True, timeout=15)
     except Exception as e:
-        return f"Failed to fetch remote video: {e}", 502
+        return f"Failed to fetch video: {e}", 502
 
-    if r.status_code != 200:
-        return f"Failed to fetch remote video: status {r.status_code}", 502
-
-    response = Response(stream_with_context(r.iter_content(8192)),
-                        mimetype="application/octet-stream")
-    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+    response = Response(stream_with_context(r.iter_content(8192)), mimetype="application/octet-stream")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
-if __name__ == "__main__":
-    app.run(debug=True)
+
+@app.route('/cleanup')
+def cleanup_temp():
+    """Delete any leftover temporary folders from previous runs"""
+    temp_dir = tempfile.gettempdir()
+    deleted = []
+    for name in os.listdir(temp_dir):
+        if name.startswith("kommodo_") or name.startswith("kommodo_dl_"):
+            path = os.path.join(temp_dir, name)
+            try:
+                shutil.rmtree(path)
+                deleted.append(name)
+            except:
+                pass
+    return f"Deleted temporary folders: {', '.join(deleted)}" if deleted else "No leftover temporary folders found."
