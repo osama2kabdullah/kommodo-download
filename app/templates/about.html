@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About Developer - Kommodo Video Downloader</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header class="app-header">
+      <nav class="app-nav">
+        <ul class="nav-list">
+          <li>
+            <a href="/" class="nav-link">Home</a>
+          </li>
+          <li>
+            <a href="/about" class="nav-link nav-link-active"
+              >About Developer</a
+            >
+          </li>
+        </ul>
+      </nav>
+    </header>
+
+    <section class="about-wrapper">
+      <div class="about-card">
+        <!-- Left Side: Photo -->
+        <div class="about-left">
+          <img
+            src="{{ url_for('static', filename='images/developer_photo.jpeg') }}"
+            alt="Developer Photo"
+            class="about-avatar"
+          />
+        </div>
+
+        <!-- Right Side: Info -->
+        <div class="about-right">
+          <h1 class="about-title">Hello, I'm a Developer</h1>
+
+          <p class="about-description">
+            I started my journey in <strong>2023</strong> as a
+            <strong>Shopify Expert</strong>. Today, I'm working hard to become a
+            skilled <strong>Full-Stack Developer</strong>. I build apps, APIs,
+            themes, and solve real-world problems through code.
+          </p>
+
+          <div class="about-details">
+            <h3>What I Do</h3>
+            <ul class="about-tags">
+              <li>Python</li>
+              <li>Node.js</li>
+              <li>SQL Databases</li>
+              <li>API Development</li>
+              <li>Shopify App Creation</li>
+              <li>Theme Development & Customization</li>
+            </ul>
+          </div>
+
+          <!-- Social links -->
+          <div class="about-socials">
+            <a href="#" class="social-btn github">GitHub</a>
+            <a href="#" class="social-btn linkedin">LinkedIn</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

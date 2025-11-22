@@ -11,27 +11,49 @@
   </head>
   <body>
 
+    <header class="app-header">
+      <nav class="app-nav">
+        <ul class="nav-list">
+          <li>
+            <a href="/" class="nav-link nav-link-active">Home</a>
+          </li>
+          <li>
+            <a href="/about" class="nav-link">About Developer</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    
     <div class="container">
-      <header class="header">
+      <div class="header">
         <div class="logo-container">
-          <img src="{{ url_for('static', filename='images/kommodo_logo.png') }}" alt="kommodo logo">
+          <img
+            src="{{ url_for('static', filename='images/kommodo_logo.png') }}"
+            alt="kommodo logo"
+          />
         </div>
         <h1>Kommodo Video Downloader</h1>
         <p>
           Paste the video URL below to initiate the secure download process.
         </p>
-      </header>
+      </div>
 
       <div class="input-card">
-        <form id="downloadForm" class="input-group">
+        <form
+          id="videoCaptureForm"
+          action="/fetch_info_ajax"
+          method="POST"
+          class="input-group"
+        >
           <input
             type="url"
+            name="url"
             class="url-input"
             placeholder="e.g., https://kommodo.ai/recordings/your-video-id"
-            id="videoUrl"
+            id="videoUrlInput"
             required
           />
-          <button type="submit" id="downloadButton" class="download-button">
+          <button type="submit" id="captureButton" class="download-button">
             <span>Download Video</span>
           </button>
         </form>
@@ -50,37 +72,11 @@
 
       <section id="downloadResults" class="results-section">
         <div class="results-header">
-          <div class="check-icon"></div>
-          <h2>Video Ready for Playback & Download</h2>
+          <h4>Video Ready for Playback & Download</h4>
         </div>
 
-        <div class="video-container">
-          <div class="video-placeholder">
-            Placeholder for Video Player (HTML5 Video Tag)
-          </div>
-        </div>
-
-        <div class="video-details">
-          <div class="detail-item">
-            <strong>File Name</strong>
-            <span>Komodo_Capture_2025-11-22.mp4</span>
-          </div>
-          <div class="detail-item">
-            <strong>Format</strong>
-            <span>MP4 (H.264)</span>
-          </div>
-          <div class="detail-item">
-            <strong>Resolution</strong>
-            <span>1920 x 1080</span>
-          </div>
-          <div class="detail-item">
-            <strong>Size</strong>
-            <span>125.8 MB</span>
-          </div>
-          <div class="detail-item">
-            <strong>Duration</strong>
-            <span>03:45</span>
-          </div>
+        <div class="video-placeholder">
+          <div class="video-container"></div>
         </div>
 
         <div>
@@ -90,13 +86,6 @@
           >
             Download
           </button>
-        </div>
-
-        <div class="long-content-placeholder">
-          Additional download options, file history, or detailed information
-          would appear here.
-          <br />
-          (Simulating a need to scroll down for full visibility.)
         </div>
       </section>
     </div>
