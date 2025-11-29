@@ -475,11 +475,15 @@ body {
     padding-bottom: 15px;
 }
 
+.results-header svg,
 .results-header h2 {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--success-color);
-    margin-left: 10px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--success-color);
+  margin-left: 10px;
+}
+.results-header svg {
+  margin-left: 0;
 }
 
 /* Icon for success simulation */

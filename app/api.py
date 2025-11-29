@@ -1,135 +1,214 @@
+# blueprint_video_proxy.py
 import os
 import tempfile
 import shutil
 import urllib.parse
-from flask import Blueprint, request, url_for, Response, stream_with_context, abort, jsonify
+from flask import Blueprint, request, url_for, Response, stream_with_context, abort, jsonify, current_app, send_file
 import yt_dlp
 import requests
+import time
 
 api = Blueprint('api', __name__)
 
-# --- Helper Function for Range Header Streaming (Crucial for Video Seeking) ---
+# -----------------------------
+# Persistent Session (NEW)
+# -----------------------------
+session = requests.Session()
+
+# -----------------------------
+# Manifest Cache (for m3u8)
+# -----------------------------
+manifest_cache = {}
+MANIFEST_TTL = 5  # seconds
+
+# -----------------------------
+# Helpers
+# -----------------------------
+
+HOP_BY_HOP_HEADERS = {
+    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+    'te', 'trailers', 'transfer-encoding', 'upgrade'
+}
+
+def safe_copy_headers(src_headers, dst_headers):
+    for k, v in src_headers.items():
+        if k.lower() in HOP_BY_HOP_HEADERS:
+            continue
+        dst_headers[k] = v
+
+def forward_range_header():
+    headers = {}
+    rng = request.headers.get('Range')
+    if rng:
+        headers['Range'] = rng
+    return headers
+
 def send_file_partial(path):
-    """
-    Serves a file from the given path while correctly handling the HTTP Range header 
-    for video seeking. This is necessary for videos merged and saved to disk.
-    """
     range_header = request.headers.get('Range', None)
+    size = os.path.getsize(path)
+
     if not range_header:
-        # If no range is requested, stream the whole file
-        return Response(open(path, 'rb'), mimetype='video/mp4')
+        resp = send_file(path, mimetype='video/mp4', as_attachment=False, conditional=True)
+        resp.headers['Accept-Ranges'] = 'bytes'
+        return resp
 
-    # Parse the range request (e.g., bytes=0-1023)
-    size = os.path.getsize(path)    
-    byte1, byte2 = 0, size - 1
-    
-    m = range_header.replace('bytes=', '').split('-')
     try:
-        byte1 = int(m[0])
-    except:
-        pass
-    try:
-        byte2 = int(m[1])
-    except:
-        pass
-        
-    length = byte2 - byte1 + 1
-    
-    data = None
-    with open(path, 'rb') as f:
-        f.seek(byte1)
-        data = f.read(length)
+        bytes_range = range_header.replace('bytes=', '').split('-')
+        start = int(bytes_range[0]) if bytes_range[0] else 0
+        end = int(bytes_range[1]) if len(bytes_range) > 1 and bytes_range[1] else size - 1
+    except Exception:
+        start, end = 0, size - 1
 
-    rv = Response(
-        data,
-        206, # Partial Content status code
-        mimetype='video/mp4',
-        content_type='video/mp4',
-        direct_passthrough=True
-    )
-    rv.headers.set('Content-Range', f'bytes {byte1}-{byte2}/{size}')
-    rv.headers.set('Content-Length', str(length))
-    rv.headers.set('Accept-Ranges', 'bytes')
+    if start > end or start >= size:
+        return Response(status=416)
+
+    length = end - start + 1
+
+    def generate():
+        with open(path, 'rb') as f:
+            f.seek(start)
+            remaining = length
+            chunk_size = 8192
+            while remaining > 0:
+                data = f.read(min(chunk_size, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
+
+    rv = Response(stream_with_context(generate()), status=206, mimetype='video/mp4')
+    rv.headers['Content-Range'] = f'bytes {start}-{end}/{size}'
+    rv.headers['Content-Length'] = str(length)
+    rv.headers['Accept-Ranges'] = 'bytes'
     return rv
 
+# -----------------------------
+# Proxy Upstream Stream (UPDATED with persistent session + caching)
+# -----------------------------
+def proxy_stream_from_remote(remote_url, timeout=30):
+    # -------- m3u8 cache check --------
+    if remote_url.endswith(".m3u8"):
+        cached = manifest_cache.get(remote_url)
+        if cached:
+            ts, content, headers = cached
+            if time.time() - ts < MANIFEST_TTL:
+                print("💾 Using cached manifest:", remote_url)
+                resp = Response(content, mimetype="application/vnd.apple.mpegurl")
+                for k, v in headers.items():
+                    resp.headers[k] = v
+                return resp
 
-# --- Helper Function for Direct Streaming (Simple Proxy for Non-Merged Files) ---
-def stream_generator(remote_url):
-    """Streams data from a remote URL chunk by chunk using requests."""
-    headers = {}
-    if request.headers.get('Range'):
-        # Pass the range header to the upstream server
-        headers['Range'] = request.headers.get('Range')
+    upstream_headers = forward_range_header()
+    upstream_headers.setdefault('User-Agent', 'Mozilla/5.0 (KommodoProxy/1.0)')
 
     try:
-        with requests.get(remote_url, stream=True, timeout=30, headers=headers) as r: 
-            r.raise_for_status()
-            
-            # If Range was successful, pass through headers (Content-Range, Content-Length)
-            if r.status_code == 206:
-                yield (r.status_code, r.headers, r.iter_content(chunk_size=8192))
-            
-            # If not a partial response (200), stream normally
-            else:
-                yield (r.status_code, r.headers, r.iter_content(chunk_size=8192))
+        r = session.get(remote_url, stream=True, timeout=timeout, headers=upstream_headers)
     except Exception as e:
-        print(f"Error during direct stream generation: {e}")
-        return
+        current_app.logger.exception("Failed to connect to upstream URL")
+        return Response(f"Failed to fetch upstream resource: {e}", status=502)
+
+    # Cache manifest if needed
+    if remote_url.endswith(".m3u8") and r.status_code == 200:
+        content = r.content
+        headers = {k: v for k, v in r.headers.items()
+                   if k.lower() not in HOP_BY_HOP_HEADERS}
+
+        manifest_cache[remote_url] = (time.time(), content, headers)
+
+        resp = Response(content, mimetype="application/vnd.apple.mpegurl")
+        for k, v in headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # If upstream returned error
+    if r.status_code >= 400:
+        return Response(r.content[:1024], status=r.status_code)
+
+    def generate():
+        try:
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        finally:
+            try:
+                r.close()
+            except:
+                pass
+
+    resp = Response(stream_with_context(generate()), status=r.status_code)
+    safe_copy_headers(r.headers, resp.headers)
+
+    if "Accept-Ranges" not in resp.headers:
+        resp.headers["Accept-Ranges"] = "bytes"
+
+    return resp
+
+# -----------------------------
+# Endpoints
+# -----------------------------
 
 @api.route('/fetch_info_ajax', methods=['POST'])
 def fetch_info_ajax():
-    """
-    Fetches detailed metadata and streaming/download links for a given video URL.
-    """
     url = request.form.get('url', '').strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    ydl_opts = {'quiet': True, 'skip_download': True, 'no_warnings': True}
+    # -------- FIXED yt-dlp deprecated format sort --------
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'no_warnings': True,
+        'format_sort': ['res', 'fps', 'vbr', 'filesize']
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as e:
+        current_app.logger.exception("yt-dlp extract_info failed")
         return jsonify({"error": f"Failed to extract info: {str(e)}"}), 400
 
     title = info.get('title', 'Unknown Video')
     thumbnail = info.get('thumbnail')
-    
-    # --- Robust Format Selection Logic ---
+
     stream_url = None
     best_format = None
-    formats = info.get('formats')
+    formats = info.get('formats') or []
 
-    if formats:
-        real_media = []
-        for f in formats:
-            url_f = f.get("url")
-            ext = f.get("ext")
-            
-            if ext in ("json", "mpd", "m3u8") or not url_f:
-                continue
+    single_streams = []
+    for f in formats:
+        url_f = f.get('url')
+        if not url_f:
+            continue
 
-            # Scoring logic to prioritize combined audio/video formats and common extensions
+        has_audio = (f.get('acodec') != 'none')
+        has_video = (f.get('vcodec') != 'none')
+
+        if has_audio and has_video:
             score = 0
-            if f.get('acodec') != 'none': score += 50
-            if f.get('vcodec') != 'none': score += 50
-            if f.get('height'): score += f.get('height')
-            if ext in ("mp4", "webm"): score += 100
+            if f.get('ext') in ("mp4", "webm"): score += 200
+            if f.get('height'): score += int(f.get('height') or 0)
+            if f.get('filesize') or f.get('filesize_approx'): score += 50
 
-            real_media.append((score, url_f, f))
+            single_streams.append((score, url_f, f))
 
-        if real_media:
-            real_media.sort(key=lambda x: x[0], reverse=True)
-            stream_url = real_media[0][1]
-            best_format = real_media[0][2]
-        elif info.get('url'):
-            stream_url = info.get('url')
-    
+    if single_streams:
+        single_streams.sort(key=lambda x: x[0], reverse=True)
+        stream_url = single_streams[0][1]
+        best_format = single_streams[0][2]
+    else:
+        stream_url = info.get('url')
+        if not stream_url:
+            for f in formats:
+                if f.get('url'):
+                    stream_url = f.get('url')
+                    best_format = f
+                    break
+
     if not stream_url:
         return jsonify({"error": "No playable video stream found."}), 400
 
-    # --- Video Metadata Extraction (Fix for Missing Info) ---
+    # Video details
     video_details = {
         "format": "N/A",
         "resolution": "N/A",
@@ -138,105 +217,56 @@ def fetch_info_ajax():
     }
 
     if best_format:
-        # Fixes the TypeError and gets filesize for metadata
-        filesize_bytes = best_format.get('filesize', 0) or best_format.get('filesize_approx', 0)
-        if filesize_bytes is None:
-            filesize_bytes = 0 
-        
-        filesize_mb = f"{round(filesize_bytes / (1024 * 1024), 1)} MB" if filesize_bytes > 0 else 'Unknown'
+        filesize = best_format.get('filesize') or best_format.get('filesize_approx')
+        if filesize:
+            filesize = f"{round(filesize / (1024*1024), 1)} MB"
+        else:
+            filesize = "Unknown"
+
+        w = best_format.get('width')
+        h = best_format.get('height')
+        resolution = f"{w}x{h}" if w and h else "N/A"
 
         video_details = {
-            "format": best_format.get('ext', 'N/A').upper(),
-            "resolution": f"{best_format.get('width')}x{best_format.get('height')}" if best_format.get('width') and best_format.get('height') else 'N/A',
-            "filesize": filesize_mb,
+            "format": (best_format.get('ext') or 'N/A').upper(),
+            "resolution": resolution,
+            "filesize": filesize,
             "duration": info.get('duration_string', 'N/A')
         }
-    
-    # URL-encode the direct video stream URL
+
     encoded = urllib.parse.quote_plus(stream_url)
 
-    # Return the final JSON payload
     return jsonify({
         "title": title,
         "thumbnail": thumbnail,
         "stream_path": url_for('api.proxy_stream', video_url=encoded),
         "download_route": url_for('api.proxy_download', video_url=encoded),
-        "video_details": video_details,
+        "video_details": video_details
     })
 
-# --- PROXY STREAM ROUTE with Manifest Handling & Range Support ---
+
 @api.route('/proxy_stream')
 def proxy_stream():
-    """
-    Proxies the video stream. Uses Range support for local files, and attempts
-    to pass Range headers for direct proxies.
-    """
     video_url = request.args.get('video_url')
     if not video_url:
         abort(400, "Missing video URL parameter.")
 
     remote = urllib.parse.unquote_plus(video_url)
-    lower = remote.lower()
 
-    # Case 1: Manifest file (Requires yt-dlp download, merge, and local Range handling)
-    if any(x in lower for x in ('.m3u8', '.mpd', '.json')):
-        tmpdir = tempfile.mkdtemp(prefix="kommodo_")
-        try:
-            ydl_opts = {
-                'format': 'bestvideo+bestaudio/best',
-                'outtmpl': os.path.join(tmpdir, '%(id)s.%(ext)s'),
-                'merge_output_format': 'mp4',
-                'quiet': True,
-                'no_warnings': True,
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.extract_info(remote, download=True)
+    if remote.startswith('file://') or os.path.exists(remote):
+        if remote.startswith('file://'):
+            path = urllib.parse.urlparse(remote).path
+        else:
+            path = remote
+        if not os.path.exists(path):
+            return "Local file not found.", 404
+        return send_file_partial(path)
 
-            files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir)]
-            if not files:
-                shutil.rmtree(tmpdir)
-                return "Failed to merge video.", 500
-                
-            files.sort(key=lambda p: os.path.getsize(p), reverse=True)
-            file_path = files[0]
-
-            # Use the Range-aware helper to serve the file
-            response = send_file_partial(file_path)
-            
-            # CRITICAL: We need a way to clean up the file after the request is complete. 
-            # Flask's after_request hook is usually needed, but in this context, we will 
-            # rely on the /cleanup route or hope the stream completes quickly. 
-            # For simplicity, we are returning the response directly.
-            
-            return response
-        except Exception as e:
-            try:
-                shutil.rmtree(tmpdir)
-            except Exception:
-                pass
-            return f"Error streaming merged video: {e}", 500
-    
-    # Case 2: Direct file link (Attempt to proxy, passing Range header)
-    else:
-        result = next(stream_generator(remote))
-        status_code, headers, content_iterator = result
-        
-        response = Response(stream_with_context(content_iterator), status=status_code)
-        
-        # Pass through all necessary headers from the remote server
-        for header, value in headers.items():
-            if header.lower() not in ('transfer-encoding', 'content-encoding'):
-                 response.headers[header] = value
-        
-        return response
+    return proxy_stream_from_remote(remote)
 
 
-# --- PROXY DOWNLOAD ROUTE (Unchanged from previous fix) ---
 @api.route('/proxy_download')
 def proxy_download():
-    """
-    Proxies the video download. If the URL is a manifest, it downloads and merges.
-    """
     video_url = request.args.get('video_url')
     if not video_url:
         abort(400, "Missing video URL parameter.")
@@ -254,19 +284,20 @@ def proxy_download():
                 'quiet': True,
                 'no_warnings': True,
             }
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(remote, download=True)
 
             files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir)]
             if not files:
+                shutil.rmtree(tmpdir, ignore_errors=True)
                 return "Failed to download merged video.", 500
-            
-            files.sort(key=lambda p: os.path.getsize(p), reverse=True)
+
+            files.sort(key=os.path.getsize, reverse=True)
             file_path = files[0]
             filename = os.path.basename(file_path)
 
-            def generate_and_cleanup(path, tmpdir):
-                """Streams the file content and cleans up."""
+            def generate(path, tmp):
                 try:
                     with open(path, 'rb') as fh:
                         while True:
@@ -275,29 +306,45 @@ def proxy_download():
                                 break
                             yield chunk
                 finally:
-                    try:
-                        shutil.rmtree(tmpdir)
-                    except Exception:
-                        pass
+                    shutil.rmtree(tmp, ignore_errors=True)
 
-            response = Response(stream_with_context(generate_and_cleanup(file_path, tmpdir)), mimetype='application/octet-stream')
-            response.headers.set('Content-Disposition', f'attachment; filename="{filename}"')
-            return response
+            resp = Response(stream_with_context(generate(file_path, tmpdir)),
+                            mimetype="application/octet-stream")
+            resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+            resp.headers["Content-Length"] = str(os.path.getsize(file_path))
+            return resp
 
         except Exception as e:
-            try:
-                shutil.rmtree(tmpdir)
-            except Exception:
-                pass
-            return f"Error downloading merged video: {e}", 500
+            current_app.logger.exception("yt-dlp download error")
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return f"Error downloading: {e}", 500
 
-    # Direct file download (simple proxy)
     filename = remote.split("/")[-1].split("?")[0] or "video.mp4"
+
     try:
-        r = requests.get(remote, stream=True, timeout=15)
+        r = session.get(remote, stream=True, timeout=30,
+                        headers={'User-Agent': 'Mozilla/5.0 (KommodoProxy/1.0)'})
     except Exception as e:
+        current_app.logger.exception("Remote fetch failed")
         return f"Failed to fetch video: {e}", 502
 
-    response = Response(stream_with_context(r.iter_content(8192)), mimetype="application/octet-stream")
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
+    if r.status_code >= 400:
+        return Response(r.content, status=r.status_code)
+
+    def generate():
+        try:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        finally:
+            r.close()
+
+    resp = Response(stream_with_context(generate()),
+                    mimetype="application/octet-stream",
+                    status=r.status_code)
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+
+    if 'content-length' in r.headers:
+        resp.headers["Content-Length"] = r.headers["content-length"]
+
+    return resp

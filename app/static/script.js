@@ -47,7 +47,6 @@ const updateResultsDOM = (data) => {
     
     // 1. Video Player & Thumbnail
     const videoHTML = `
-        <img src="${data.thumbnail || ''}" alt="video thumbnail">
         <video controls poster="${data.thumbnail || ''}" style="width: 100%; height: 100%;">
             <source src="${data.stream_path}" type="video/mp4">
             Your browser does not support the video tag.
@@ -100,7 +99,7 @@ const handleCaptureVideo = async (event) => {
         });
 
         const data = await response.json();
-        
+
         if (response.ok && !data.error) {
             // Success path
             console.log('[SUCCESS] Video info received.', data);

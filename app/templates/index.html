@@ -10,7 +10,6 @@
     />
   </head>
   <body>
-
     <header class="app-header">
       <nav class="app-nav">
         <ul class="nav-list">
@@ -23,7 +22,7 @@
         </ul>
       </nav>
     </header>
-    
+
     <div class="container">
       <div class="header">
         <div class="logo-container">
@@ -72,20 +71,59 @@
 
       <section id="downloadResults" class="results-section">
         <div class="results-header">
-          <h4>Video Ready for Playback & Download</h4>
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" class="bi bi-check2" viewBox="0 0 16 16">
+            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0"/>
+          </svg>
+          <h2>Video Ready for Playback & Download</h2>
         </div>
 
-        <div class="video-placeholder">
-          <div class="video-container"></div>
+        <div class="video-container">
+          <!-- This is where the actual <video> tag would go -->
+          <div class="video-placeholder">
+            Placeholder for Video Player (HTML5 Video Tag)
+          </div>
         </div>
 
-        <div>
-          <button
-            class="download-button"
-            style="padding: 8px 15px; font-size: 0.9rem"
-          >
-            Download
-          </button>
+        <!-- Video Metadata Details -->
+        <div class="video-details">
+          <div class="detail-item">
+            <strong>File Name</strong>
+            <span>Komodo_Capture_2025-11-22.mp4</span>
+          </div>
+          <div class="detail-item">
+            <strong>Format</strong>
+            <span>MP4 (H.264)</span>
+          </div>
+          <div class="detail-item">
+            <strong>Resolution</strong>
+            <span>1920 x 1080</span>
+          </div>
+          <div class="detail-item">
+            <strong>Size</strong>
+            <span>125.8 MB</span>
+          </div>
+          <div class="detail-item">
+            <strong>Duration</strong>
+            <span>03:45</span>
+          </div>
+          <div class="detail-item">
+            <strong>Download Link</strong>
+            <!-- Actual download link button -->
+            <button
+              class="download-button"
+              style="padding: 8px 15px; font-size: 0.9rem"
+            >
+              Get MP4 File
+            </button>
+          </div>
+        </div>
+
+        <!-- Long Content Placeholder to simulate required scroll down/visibility -->
+        <div class="long-content-placeholder">
+          Additional download options, file history, or detailed information
+          would appear here.
+          <br />
+          (Simulating a need to scroll down for full visibility.)
         </div>
       </section>
     </div>
