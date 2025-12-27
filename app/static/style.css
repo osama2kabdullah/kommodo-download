@@ -197,6 +197,15 @@ body {
   background: #1da1f2;
 }
 
+.social-btn.website {
+  background: #f0f2f5;
+  color: black;
+  border: 1px solid;
+}
+.social-btn.website{
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
 .social-btn:hover {
   opacity: 0.85;
 }
