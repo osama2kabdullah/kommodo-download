@@ -53,7 +53,8 @@ const handleCaptureVideo = async (event) => {
   errorSection.textContent = '';
   const videoUrl = videoUrlInput.value.trim();
   if (!videoUrl) {
-    alert('Please enter a video URL.');
+    errorSection.textContent = 'Please enter a video URL.';
+    errorSection.parentElement.style.display = 'block';
     return;
   }
 
@@ -74,7 +75,6 @@ const handleCaptureVideo = async (event) => {
       toggleResults(true);
     } else {
       const message = data.message || data.error || 'Failed to capture video.';
-      // alert(`Error: ${message}`);
       errorSection.textContent = message;
       errorSection.parentElement.style.display = 'block';
       console.error('[API Error]', message);
@@ -82,7 +82,8 @@ const handleCaptureVideo = async (event) => {
     }
 
   } catch (error) {
-    alert('Network error. Please try again.');
+    errorSection.textContent = 'Server\'s Network error. Please try again.';
+    errorSection.parentElement.style.display = 'block';
     console.error('[Network Error]', error);
     toggleResults(false);
   } finally {
@@ -92,7 +93,8 @@ const handleCaptureVideo = async (event) => {
 
 const handleDownloadVideo = () => {
   if (!capturedVideoUrl) {
-    alert('No video captured yet.');
+    errorSection.textContent = 'No video captured yet. Please capture a video first.';
+    errorSection.parentElement.style.display = 'block';
     return;
   }
 
