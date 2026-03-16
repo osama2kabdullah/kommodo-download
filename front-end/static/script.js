@@ -1,5 +1,5 @@
 // ---- Config ----
-const API_BASE_URL = 'http://127.0.0.1:8787';
+const API_BASE_URL = 'https://kommodo-api.osama-abdullah.com';
 
 // ---- Element Selectors ----
 const videoCaptureForm = document.getElementById('videoCaptureForm');
