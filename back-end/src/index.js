@@ -107,7 +107,7 @@ async function infoHandler(request) {
   if (contentType.startsWith("text/html")) {
     const html = await response.text();
     const match = html.match(/https?:\/\/[^"]+\.m3u8[^"]*/);
-    if (!match) return jsonError("Could not find video playlist in page", 404);
+    if (!match) return jsonError("Could not find video", 404);
     finalVideoUrl = match[0];
     sourceType = "page";
 

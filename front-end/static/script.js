@@ -1,5 +1,6 @@
 // ---- Config ----
 const API_BASE_URL = 'https://kommodo-api.osama-abdullah.com';
+// const API_BASE_URL = 'http://127.0.0.1:8787';
 
 // ---- Element Selectors ----
 const videoCaptureForm = document.getElementById('videoCaptureForm');
@@ -7,6 +8,7 @@ const captureButton = document.getElementById('captureButton');
 const buttonText = captureButton.querySelector('span');
 const loaderContainer = document.getElementById('loaderContainer');
 const resultsSection = document.getElementById('downloadResults');
+const errorSection = document.getElementById('errorMessage');
 const videoUrlInput = document.getElementById('videoUrlInput');
 const thumbnailContainer = resultsSection.querySelector('.thumbnail-container');
 const downloadLinkButton = resultsSection.querySelector('.download-button');
@@ -47,7 +49,8 @@ const updateResultsDOM = (data) => {
 // ---- Main Event Handlers ----
 const handleCaptureVideo = async (event) => {
   event.preventDefault();
-
+  errorSection.parentElement.style.display = 'none';
+  errorSection.textContent = '';
   const videoUrl = videoUrlInput.value.trim();
   if (!videoUrl) {
     alert('Please enter a video URL.');
@@ -71,7 +74,9 @@ const handleCaptureVideo = async (event) => {
       toggleResults(true);
     } else {
       const message = data.message || data.error || 'Failed to capture video.';
-      alert(`Error: ${message}`);
+      // alert(`Error: ${message}`);
+      errorSection.textContent = message;
+      errorSection.parentElement.style.display = 'block';
       console.error('[API Error]', message);
       toggleResults(false);
     }
