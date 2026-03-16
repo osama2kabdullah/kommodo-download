@@ -1,0 +1,11 @@
+name = "kommodo-video-worker"
+type = "javascript"
+account_id = "YOUR_ACCOUNT_ID"
+workers_dev = true
+compatibility_date = "2026-03-16"
+
+[vars]
+ALLOWED_ORIGIN = "http://127.0.0.1:5500"
+
+[env.production.vars]
+ALLOWED_ORIGIN = "https://your-production-site.com"

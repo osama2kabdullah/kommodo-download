@@ -6,7 +6,7 @@
     <title>About Developer - Kommodo Video Downloader</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}"
+      href="./static/style.css"
     />
   </head>
   <body>
@@ -14,10 +14,10 @@
       <nav class="app-nav">
         <ul class="nav-list">
           <li>
-            <a href="/" class="nav-link">Home</a>
+            <a href="./index.html" class="nav-link">Home</a>
           </li>
           <li>
-            <a href="/about" class="nav-link nav-link-active"
+            <a href="./about.html" class="nav-link nav-link-active"
               >About Developer</a
             >
           </li>
@@ -30,7 +30,7 @@
         <!-- Left Side: Photo -->
         <div class="about-left">
           <img
-            src="{{ url_for('static', filename='images/developer_photo.jpeg') }}"
+            src="./static/images/developer_photo.jpeg"
             alt="Developer Photo"
             class="about-avatar"
           />
@@ -63,7 +63,7 @@
           <div class="about-socials">
             <a href="https://github.com/osama2kabdullah" target="_blank" class="social-btn github">GitHub</a>
             <a href="https://www.linkedin.com/in/md-abdullah-9121b5228/" target="_blank" class="social-btn linkedin">LinkedIn</a>
-            <a href="https://www.osama-abdullah.com/" target="_blank" class="social-btn website">Website</a>
+            <!-- <a href="https://www.osama-abdullah.com/" target="_blank" class="social-btn website">Website</a> -->
           </div>
         </div>
       </div>
