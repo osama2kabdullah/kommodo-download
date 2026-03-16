@@ -3,6 +3,7 @@ type = "javascript"
 account_id = "049b487510d2a5be1122f99fd9ae8bea"
 workers_dev = true
 compatibility_date = "2026-03-16"
+main = "src/index.js"
 
 [vars]
 ALLOWED_ORIGIN = "http://127.0.0.1:5500"
