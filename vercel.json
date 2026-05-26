@@ -1,32 +1,17 @@
 {
-  "version": 2,
-  "builds": [
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "source": "/api/analyze",
+      "destination": "/api/analyze.ts"
     },
     {
-      "src": "api/*.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/analyze",
-      "dest": "api/analyze.ts"
+      "source": "/api/download-proxy",
+      "destination": "/api/download-proxy.ts"
     },
     {
-      "src": "/api/download-proxy",
-      "dest": "api/download-proxy.ts"
-    },
-    {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
