@@ -506,7 +506,7 @@ export default function App() {
             rel="noopener noreferrer" 
             className="text-white hover:text-emerald-400 transition-colors underline decoration-2 underline-offset-4"
           >
-            Osama Abdullah
+            Md Abdullah
           </a>
         </div>
       </footer>
