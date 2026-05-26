@@ -1,0 +1,6 @@
+{
+  "name": "Kommodo Video Downloader",
+  "description": "A high-fidelity full-stack video downloader designed to analyze and download video streams from web pages and video-sharing platforms and powered by the Kommodo engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
